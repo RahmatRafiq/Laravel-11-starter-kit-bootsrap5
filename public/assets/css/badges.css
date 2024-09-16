@@ -1,0 +1,64 @@
+/* existing roles now are super admin, dosen, mitra, peserta and staff */
+/* create background color */
+.bg-super_admin {
+    background-color: #f44336;
+}
+.bg-user {
+    background-color: #9c27b0;
+}
+.bg-mitra {
+    background-color: #3f51b5;
+}
+.bg-peserta {
+    background-color: #2196f3;
+}
+.bg-staff {
+    background-color: #4caf50;
+}
+
+/* badge form open and is open */
+.badge-open {
+    background-color: #4caf50;
+    color: white;
+}
+.badge-close {
+    background-color: #f44336;
+    color: white;
+}
+
+/* badge for registration status */
+
+.badge-registered {
+    background-color: #4caf50; /* Hijau */
+    color: white;
+}
+
+.badge-processed {
+    background-color: #2196f3; /* Biru */
+    color: white;
+}
+
+.badge-accepted {
+    background-color: #ff9800; /* Oranye */
+    color: white;
+}
+
+.badge-rejected {
+    background-color: #f44336; /* Merah */
+    color: white;
+}
+
+.badge-rejected_by_user {
+    background-color: #9c27b0; /* Ungu */
+    color: white;
+}
+
+.badge-accepted_offer {
+    background-color: #ffeb3b; /* Kuning */
+    color: black; /* Warna teks hitam */
+}
+
+.badge-placement {
+    background-color: #00bcd4; /* Cyan */
+    color: white;
+}

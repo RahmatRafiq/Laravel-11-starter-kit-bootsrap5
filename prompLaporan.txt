@@ -1,0 +1,894 @@
+saya memiliki sebuah masalah saat mengembangkan sebuah aplikasi di laravel 11 saya.
+
+setidaknya ada 2 masalah.
+
+masalah pertama, fitur lowongan yang mengandung mitra ini ternya salah satunya memiliki flow yang tidak sama dengan yang lainnya, dalam artian proses perekrutan dan lain lain ini beda sendiri, dan juga membuat masalah jika dipaksakaan. konteks nya adlah dalam sebuah mahasiswa hanya memiliki satu lowongan yang aktif hingga diterima kedalam lowongan, intinya 1 lowongan 1 mahaisiwa dalam 1 id registrasi, maasalah terjadi ketika  ada lowongan yang boleh ditampung 10 mahasiswa dan 1 id registrasi dan ke 10 nya melakukan pengisian laporan, ini sangat membingungkan bagi saya. nama program tersebut wirausaha merdeka, saya bingung masalah proses registrasi karena tidak mungkin ke 10 anggotanya melakukan registrasi, atau mungkin 1 saja yang registrasi dan berperan sebagai ketua team, jika lowongannya di tempatkan barulah ke 9 anggota di daftarkan? saya sungguh bingung
+
+ini kode nya
+
+ini merupakan controller aktivitas yang mengelola masalah pelaporan dan validasi laporan dan lain lain
+
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Models\AktivitasMbkm;
+use App\Models\BatchMbkm;
+use App\Models\LaporanHarian;
+use App\Models\LaporanLengkap;
+use App\Models\LaporanMingguan;
+use App\Models\Peserta;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+
+class AktivitasMbkmController extends Controller
+{
+    private $activeBatch;
+
+    public function __construct()
+    {
+        $this->activeBatch = BatchMbkm::getActiveBatch();
+        if (!$this->activeBatch) {
+            abort(403, 'Tidak ada batch aktif yang sedang berjalan.');
+        }
+    }
+
+    public function index(Request $request)
+    {
+        $user = Auth::user();
+        $pesertaId = $request->input('peserta_id');
+
+        $daftarPeserta = Peserta::whereHas('registrationPlacement.lowongan.mitra', function ($query) use ($user) {
+            $query->where('user_id', $user->id);
+        })->get();
+
+        $laporanHarian = $pesertaId ? LaporanHarian::getByUser($user, $pesertaId) : collect();
+        $laporanMingguan = $pesertaId ? LaporanMingguan::getByUser($user, $pesertaId) : collect();
+        $laporanLengkap = $pesertaId ? LaporanLengkap::getByUser($user, $pesertaId) : collect();
+
+        return view('applications.mbkm.laporan.index', compact('daftarPeserta', 'laporanHarian', 'laporanMingguan', 'laporanLengkap', 'pesertaId'));
+    }
+
+    public function createLaporanHarian(Request $request)
+    {
+        $user = Auth::user();
+        $peserta = Peserta::with('registrationPlacement')->where('user_id', $user->id)->first();
+
+        if (!$peserta) {
+            return response()->view('applications.mbkm.error-page.not-registered', ['message' => 'Anda tidak terdaftar sebagai peserta.'], 403);
+        }
+
+        $namaPeserta = $user->peserta->nama;
+
+        $weekNumber = $request->query('week', null);
+        if ($weekNumber !== null) {
+            $startOfWeek = \Carbon\Carbon::parse($this->activeBatch->semester_start)->addWeeks($weekNumber - 1)->startOfWeek();
+            $endOfWeek = $startOfWeek->copy()->endOfWeek();
+        } else {
+            $startOfWeek = \Carbon\Carbon::now()->startOfWeek();
+            $endOfWeek = \Carbon\Carbon::now()->endOfWeek();
+        }
+
+        $currentDate = \Carbon\Carbon::now();
+
+        $laporanHarian = LaporanHarian::where('peserta_id', $user->peserta->id)->get()->keyBy('tanggal');
+
+        $totalLaporan = $laporanHarian->count();
+        $validasiLaporan = $laporanHarian->where('status', 'validasi')->count();
+        $revisiLaporan = $laporanHarian->where('status', 'revisi')->count();
+        $pendingLaporan = $laporanHarian->where('status', 'pending')->count();
+
+        return view('applications.mbkm.laporan.laporan-harian', compact(
+            'namaPeserta',
+            'laporanHarian',
+            'totalLaporan',
+            'validasiLaporan',
+            'revisiLaporan',
+            'pendingLaporan',
+            'startOfWeek',
+            'endOfWeek',
+            'currentDate'
+        ));
+    }
+
+    public function createLaporanMingguan()
+    {
+        $user = Auth::user();
+        $peserta = Peserta::with('registrationPlacement')->where('user_id', $user->id)->first();
+
+        if (!$peserta) {
+            return response()->view('applications.mbkm.error-page.not-registered', ['message' => 'Anda tidak terdaftar sebagai peserta.'], 403);
+        }
+
+        $namaPeserta = $user->peserta->nama;
+
+        $semesterStart = \Carbon\Carbon::parse($this->activeBatch->semester_start);
+        $semesterEnd = \Carbon\Carbon::parse($this->activeBatch->semester_end);
+        $currentDate = \Carbon\Carbon::now();
+        $currentWeek = $currentDate->diffInWeeks($semesterStart) + 1;
+        $totalWeeks = $semesterStart->diffInWeeks($semesterEnd) + 1;
+
+        $laporanHarian = LaporanHarian::where('peserta_id', $user->peserta->id)->get();
+
+        $laporanHarianPerMinggu = $laporanHarian->groupBy(function ($item) use ($semesterStart) {
+            return \Carbon\Carbon::parse($item->tanggal)->diffInWeeks($semesterStart) + 1;
+        });
+
+        $totalLaporan = $laporanHarian->count();
+        $validasiLaporan = $laporanHarian->where('status', 'validasi')->count();
+        $revisiLaporan = $laporanHarian->where('status', 'revisi')->count();
+        $pendingLaporan = $laporanHarian->where('status', 'pending')->count();
+
+        $laporanMingguan = LaporanMingguan::where('peserta_id', $user->peserta->id)->get()->keyBy('minggu_ke');
+
+        $weeks = [];
+        for ($i = 0; $i < $totalWeeks; $i++) {
+            $startOfWeek = $semesterStart->copy()->addWeeks($i)->startOfWeek();
+            $endOfWeek = $startOfWeek->copy()->endOfWeek();
+            $isComplete = $laporanHarianPerMinggu->has($i + 1);
+
+            $weeks[$i + 1] = [
+                'startOfWeek' => $startOfWeek,
+                'endOfWeek' => $endOfWeek,
+                'isComplete' => $isComplete,
+                'laporanMingguan' => $laporanMingguan->get($i + 1),
+                'canFill' => $isComplete,
+                'canFillDaily' => !$isComplete,
+                'isCurrentOrPastWeek' => $startOfWeek->lte($currentDate) && $endOfWeek->gte($semesterStart),
+                'laporanHarian' => $laporanHarianPerMinggu->get($i + 1),
+            ];
+        }
+
+        return view('applications.mbkm.laporan.laporan-mingguan', compact(
+            'namaPeserta',
+            'weeks',
+            'currentWeek',
+            'totalLaporan',
+            'validasiLaporan',
+            'revisiLaporan',
+            'pendingLaporan'
+        ));
+    }
+
+    public function createLaporanLengkap()
+    {
+        $user = Auth::user();
+        $peserta = Peserta::with('registrationPlacement')->where('user_id', $user->id)->first();
+
+        if (!$peserta) {
+            return response()->view('applications.mbkm.error-page.not-registered', ['message' => 'Anda tidak terdaftar sebagai peserta.'], 403);
+        }
+
+        $aktivitas = AktivitasMbkm::where('peserta_id', $user->id)->first();
+
+        return view('applications.mbkm.laporan.laporan-lengkap', compact('aktivitas'));
+    }
+
+    public function storeLaporanHarian(Request $request)
+    {
+        $request->validate([
+            'tanggal' => 'required|date',
+            'isi_laporan' => 'required|string',
+            'kehadiran' => 'required|string',
+        ]);
+
+        $user = Auth::user();
+
+        $user->load(['peserta.registrationPlacement.lowongan']);
+
+        $laporanHarian = LaporanHarian::updateOrCreate(
+            [
+                'peserta_id' => $user->peserta->id,
+                'mitra_id' => $user->peserta->registrationPlacement->lowongan->mitra_id,
+                'dospem_id' => $user->peserta->registrationPlacement->dospem_id,
+                'tanggal' => $request->tanggal,
+            ],
+            [
+                'isi_laporan' => $request->isi_laporan,
+                'status' => 'pending',
+                'kehadiran' => $request->kehadiran,
+            ]
+        );
+
+        return back()->with('success', 'Laporan harian berhasil disimpan.');
+    }
+
+    public function storeLaporanMingguan(Request $request)
+    {
+        $request->validate([
+            'minggu_ke' => 'required|integer',
+            'isi_laporan' => 'required|string',
+            'kehadiran' => 'required|string',
+        ]);
+
+        $user = Auth::user();
+
+        $user->load(['peserta.registrationPlacement.lowongan']);
+
+        $laporanMingguan = LaporanMingguan::updateOrCreate(
+            [
+                'peserta_id' => $user->peserta->id,
+                'mitra_id' => $user->peserta->registrationPlacement->lowongan->mitra_id,
+                'dospem_id' => $user->peserta->registrationPlacement->dospem_id,
+                'minggu_ke' => $request->minggu_ke,
+
+            ],
+            [
+                'isi_laporan' => $request->isi_laporan,
+                'status' => 'pending',
+                'kehadiran' => $request->kehadiran,
+            ]
+        );
+
+        return back()->with('success', 'Laporan mingguan berhasil disimpan.');
+    }
+
+    public function storeLaporanLengkap(Request $request)
+    {
+        $request->validate([
+            'tanggal' => 'required|date',
+            'isi_laporan' => 'required|string',
+        ]);
+
+        $user = Auth::user();
+        $aktivitas = AktivitasMbkm::where('peserta_id', $user->id)->first();
+
+        $laporanLengkap = LaporanLengkap::updateOrCreate(
+            [
+                'peserta_id' => $aktivitas->peserta_id,
+                'mitra_id' => $user->peserta->registrationPlacement->lowongan->mitra_id,
+                'dospem_id' => $user->peserta->registrationPlacement->dospem_id,
+                'tanggal' => $request->tanggal,
+            ],
+            [
+                'isi_laporan' => $request->isi_laporan,
+                'status' => 'pending',
+            ]
+        );
+
+        $aktivitas->laporan_lengkap_id = $laporanLengkap->id;
+        $aktivitas->save();
+
+        return back()->with('success', 'Laporan lengkap berhasil disimpan.');
+    }
+
+    public function validateLaporanHarian(Request $request, $id)
+    {
+        $laporanHarian = LaporanHarian::findOrFail($id);
+
+        if ($laporanHarian->mitra->user_id != Auth::id()) {
+            return back()->withErrors('Anda tidak memiliki izin untuk memvalidasi laporan ini.');
+        }
+
+        if ($request->action == 'validasi') {
+            $laporanHarian->update(['status' => 'validasi']);
+            return back()->with('success', 'Laporan harian berhasil divalidasi.');
+        } elseif ($request->action == 'revisi') {
+            $laporanHarian->update(['status' => 'revisi']);
+            return back()->with('success', 'Laporan harian berhasil direvisi.');
+        }
+
+        return back()->with('success', 'Laporan harian berhasil divalidasi.');
+    }
+
+    public function validateLaporanMingguan(Request $request, $id)
+    {
+        $laporanMingguan = LaporanMingguan::findOrFail($id);
+
+        if ($laporanMingguan->mitra->user_id != Auth::id()) {
+            return back()->withErrors('Anda tidak memiliki izin untuk memvalidasi laporan ini.');
+        }
+
+        if ($request->action == 'validasi') {
+            $laporanMingguan->update(['status' => 'validasi']);
+            return back()->with('success', 'Laporan mingguan berhasil divalidasi.');
+        } elseif ($request->action == 'revisi') {
+            $laporanMingguan->update(['status' => 'revisi']);
+            return back()->with('success', 'Laporan mingguan berhasil direvisi.');
+        }
+
+        return back()->with('success', 'Laporan mingguan berhasil divalidasi.');
+    }
+
+    public function validateLaporanLengkap(Request $request, $id)
+    {
+        $laporanLengkap = LaporanLengkap::findOrFail($id);
+        $aktivitas = AktivitasMbkm::where('laporan_lengkap_id', $id)->firstOrFail();
+
+        if ($aktivitas->dospem->user_id != Auth::id()) {
+            return back()->withErrors('Anda tidak memiliki izin untuk memvalidasi laporan ini.');
+        }
+
+        $laporanLengkap->update(['status' => 'validated']);
+
+        return back()->with('success', 'Laporan lengkap berhasil divalidasi.');
+    }
+}
+
+// namespace App\Http\Controllers;
+
+// use App\Models\AktivitasMbkm;
+// use App\Models\LaporanHarian;
+// use App\Models\LaporanLengkap;
+// use App\Models\LaporanMingguan;
+// use App\Models\Peserta;
+// use Illuminate\Http\Request;
+// use Illuminate\Support\Facades\Auth;
+
+// class AktivitasMbkmController extends Controller
+// {
+//     public function index(Request $request)
+//     {
+//         $user = Auth::user();
+//         $pesertaId = $request->input('peserta_id');
+
+//         // Mengambil daftar peserta berdasarkan kriteria yang sudah ditentukan
+//         $daftarPeserta = Peserta::whereHas('registrationPlacement.lowongan.mitra', function ($query) use ($user) {
+//             $query->where('user_id', $user->id);
+//         })->get();
+
+//         // Mengambil data laporan berdasarkan peserta yang dipilih
+//         $laporanHarian = $pesertaId ? LaporanHarian::getByUser($user, $pesertaId) : collect();
+//         $laporanMingguan = $pesertaId ? LaporanMingguan::getByUser($user, $pesertaId) : collect();
+//         $laporanLengkap = $pesertaId ? LaporanLengkap::getByUser($user, $pesertaId) : collect();
+
+//         return view('applications.mbkm.laporan.index', compact('daftarPeserta', 'laporanHarian', 'laporanMingguan', 'laporanLengkap', 'pesertaId'));
+//     }
+//     public function createLaporanHarian(Request $request)
+//     {
+//         $user = Auth::user();
+//         $peserta = Peserta::with('registrationPlacement')->where('user_id', $user->id)->first();
+
+//         if (!$peserta) {
+//             return response()->view('applications.mbkm.error-page.not-registered', ['message' => 'Anda tidak terdaftar sebagai peserta.'], 403);
+//         }
+
+//         $disabledPage = $peserta->registrationPlacement;
+
+//         if (!$disabledPage) {
+//             return response()->view('applications.mbkm.error-page.not-registered', ['message' => 'Anda tidak terdaftar dalam kegiatan MBKM apapun.'], 403);
+//         }
+
+//         $namaPeserta = $user->peserta->nama;
+
+//         $weekNumber = $request->query('week', null);
+//         if ($weekNumber !== null) {
+//             $semesterStart = \Carbon\Carbon::parse(env('SEMESTER_START'));
+//             $startOfWeek = $semesterStart->copy()->addWeeks($weekNumber - 1)->startOfWeek();
+//             $endOfWeek = $startOfWeek->copy()->endOfWeek();
+//         } else {
+//             $startOfWeek = \Carbon\Carbon::now()->startOfWeek();
+//             $endOfWeek = \Carbon\Carbon::now()->endOfWeek();
+//         }
+
+//         $currentDate = \Carbon\Carbon::now();
+
+//         // $laporanHarian = LaporanHarian::where('peserta_id', $user->peserta->id)
+//         //     ->whereBetween('tanggal', [$startOfWeek, $endOfWeek])
+//         //     ->get()
+//         //     ->keyBy('tanggal');
+
+//         $laporanHarian = LaporanHarian::where('peserta_id', $user->peserta->id)->get()->keyBy('tanggal');
+
+//         $totalLaporan = $laporanHarian->count();
+//         $validasiLaporan = $laporanHarian->where('status', 'validasi')->count();
+//         $revisiLaporan = $laporanHarian->where('status', 'revisi')->count();
+//         $pendingLaporan = $laporanHarian->where('status', 'pending')->count();
+
+//         return view('applications.mbkm.laporan.laporan-harian', compact(
+//             'namaPeserta',
+//             'laporanHarian',
+//             'totalLaporan',
+//             'validasiLaporan',
+//             'revisiLaporan',
+//             'pendingLaporan',
+//             'startOfWeek',
+//             'endOfWeek',
+//             'currentDate'
+//         )
+//         );
+//     }
+//     // public function createLaporanMingguan()
+//     // {
+//     //     $user = Auth::user();
+//     //     $namaPeserta = $user->peserta->nama;
+
+//     //     $semesterStart = \Carbon\Carbon::parse(env('SEMESTER_START'));
+//     //     $semesterEnd = \Carbon\Carbon::parse(env('SEMESTER_END'));
+//     //     $currentDate = \Carbon\Carbon::now();
+//     //     $currentWeek = $currentDate->diffInWeeks($semesterStart) + 1;
+//     //     $totalWeeks = $semesterStart->diffInWeeks($semesterEnd) + 1;
+
+//     //     // $laporanMingguan = LaporanMingguan::where('peserta_id', $user->peserta->id)
+//     //     //     ->get()
+//     //     //     ->keyBy('minggu_ke');
+
+//     //     $laporanMingguan = LaporanMingguan::where('peserta_id', $user->peserta->id)->get()->keyBy('tanggal');
+
+//     //     $totalLaporan = $laporanMingguan->count();
+//     //     $validasiLaporan = $laporanMingguan->where('status', 'validasi')->count();
+//     //     $revisiLaporan = $laporanMingguan->where('status', 'revisi')->count();
+//     //     $pendingLaporan = $laporanMingguan->where('status', 'pending')->count();
+
+//     //     $weeks = [];
+//     //     for ($i = 0; $i < $totalWeeks; $i++) {
+//     //         $startOfWeek = $semesterStart->copy()->addWeeks($i)->startOfWeek();
+//     //         $endOfWeek = $startOfWeek->copy()->endOfWeek();
+//     //         $isComplete = AktivitasMbkm::isWorkWeekReportComplete($user->peserta->id, $startOfWeek, $endOfWeek);
+//     //         $weekLaporanMingguan = LaporanMingguan::where('peserta_id', $user->peserta->id)
+//     //             ->where('minggu_ke', $i + 1)
+//     //             ->first();
+
+//     //         $weeks[$i + 1] = [
+//     //             'startOfWeek' => $startOfWeek,
+//     //             'endOfWeek' => $endOfWeek,
+//     //             'isComplete' => $isComplete,
+//     //             'laporanMingguan' => $weekLaporanMingguan,
+//     //             'canFill' => $isComplete,
+//     //             'canFillDaily' => !$isComplete,
+//     //             'isCurrentOrPastWeek' => $startOfWeek->lte($currentDate) && $endOfWeek->gte($semesterStart),
+//     //         ];
+//     //     }
+
+//     //     return view(
+//     //         'applications.mbkm.laporan.laporan-mingguan',
+//     //         compact(
+//     //             'namaPeserta',
+//     //             'weeks',
+//     //             'currentWeek',
+//     //             'totalLaporan',
+//     //             'validasiLaporan',
+//     //             'revisiLaporan',
+//     //             'pendingLaporan'
+//     //         )
+//     //     );
+//     // }
+
+//     public function createLaporanMingguan()
+//     {
+
+//         $user = Auth::user();
+//         $peserta = Peserta::with('registrationPlacement')->where('user_id', $user->id)->first();
+
+//         if (!$peserta) {
+//             return response()->view('applications.mbkm.error-page.not-registered', ['message' => 'Anda tidak terdaftar sebagai peserta.'], 403);
+//         }
+
+//         $disabledPage = $peserta->registrationPlacement;
+
+//         if (!$disabledPage) {
+//             return response()->view('applications.mbkm.error-page.not-registered', ['message' => 'Anda tidak terdaftar dalam kegiatan MBKM apapun.'], 403);
+//         }
+//         $namaPeserta = $user->peserta->nama;
+
+//         $semesterStart = \Carbon\Carbon::parse(env('SEMESTER_START'));
+//         $semesterEnd = \Carbon\Carbon::parse(env('SEMESTER_END'));
+//         $currentDate = \Carbon\Carbon::now();
+//         $currentWeek = $currentDate->diffInWeeks($semesterStart) + 1;
+//         $totalWeeks = $semesterStart->diffInWeeks($semesterEnd) + 1;
+
+//         // Ambil semua laporan harian untuk user
+//         $laporanHarian = LaporanHarian::where('peserta_id', $user->peserta->id)->get();
+
+//         // Kelompokkan laporan harian berdasarkan minggu ke
+//         $laporanHarianPerMinggu = $laporanHarian->groupBy(function ($item) use ($semesterStart) {
+//             return \Carbon\Carbon::parse($item->tanggal)->diffInWeeks($semesterStart) + 1;
+//         });
+
+//         // Hitung total laporan, validasi laporan, revisi laporan, dan pending laporan
+//         $totalLaporan = $laporanHarian->count();
+//         $validasiLaporan = $laporanHarian->where('status', 'validasi')->count();
+//         $revisiLaporan = $laporanHarian->where('status', 'revisi')->count();
+//         $pendingLaporan = $laporanHarian->where('status', 'pending')->count();
+
+//         // Ambil laporan mingguan berdasarkan minggu ke
+//         $laporanMingguan = LaporanMingguan::where('peserta_id', $user->peserta->id)->get()->keyBy('minggu_ke');
+
+//         $weeks = [];
+//         for ($i = 0; $i < $totalWeeks; $i++) {
+//             $startOfWeek = $semesterStart->copy()->addWeeks($i)->startOfWeek();
+//             $endOfWeek = $startOfWeek->copy()->endOfWeek();
+//             $isComplete = $laporanHarianPerMinggu->has($i + 1);
+
+//             $weeks[$i + 1] = [
+//                 'startOfWeek' => $startOfWeek,
+//                 'endOfWeek' => $endOfWeek,
+//                 'isComplete' => $isComplete,
+//                 'laporanMingguan' => $laporanMingguan->get($i + 1),
+//                 'canFill' => $isComplete,
+//                 'canFillDaily' => !$isComplete,
+//                 'isCurrentOrPastWeek' => $startOfWeek->lte($currentDate) && $endOfWeek->gte($semesterStart),
+//                 'laporanHarian' => $laporanHarianPerMinggu->get($i + 1),
+//             ];
+//         }
+
+//         return view(
+//             'applications.mbkm.laporan.laporan-mingguan',
+//             compact(
+//                 'namaPeserta',
+//                 'weeks',
+//                 'currentWeek',
+//                 'totalLaporan',
+//                 'validasiLaporan',
+//                 'revisiLaporan',
+//                 'pendingLaporan'
+//             )
+//         );
+//     }
+
+//     public function createLaporanLengkap()
+//     {
+//         $user = Auth::user();
+//         $peserta = Peserta::with('registrationPlacement')->where('user_id', $user->id)->first();
+
+//         if (!$peserta) {
+//             return response()->view('applications.mbkm.error-page.not-registered', ['message' => 'Anda tidak terdaftar sebagai peserta.'], 403);
+//         }
+
+//         $disabledPage = $peserta->registrationPlacement;
+
+//         if (!$disabledPage) {
+//             return response()->view('applications.mbkm.error-page.not-registered', ['message' => 'Anda tidak terdaftar dalam kegiatan MBKM apapun.'], 403);
+//         }
+//         $aktivitas = AktivitasMbkm::where('peserta_id', $user->id)->first();
+
+//         return view('applications.mbkm.laporan.laporan-lengkap', compact('aktivitas'));
+//     }
+//     public function storeLaporanHarian(Request $request)
+//     {
+//         $request->validate([
+//             'tanggal' => 'required|date',
+//             'isi_laporan' => 'required|string',
+//             'kehadiran' => 'required|string',
+//         ]);
+
+//         $user = Auth::user();
+
+//         $semesterStart = env('SEMESTER_START');
+//         $semesterEnd = env('SEMESTER_END');
+
+//         $user->load(['peserta.registrationPlacement.lowongan']);
+//         // Menggunakan updateOrCreate untuk memperbarui data yang ada atau membuat baru jika tidak ada
+//         $laporanHarian = LaporanHarian::updateOrCreate(
+//             [
+//                 'peserta_id' => $user->peserta->id,
+//                 'mitra_id' => $user->peserta->registrationPlacement->lowongan->mitra_id,
+//                 'tanggal' => $request->tanggal,
+//             ],
+//             [
+//                 'isi_laporan' => $request->isi_laporan,
+//                 'status' => 'pending',
+//                 'kehadiran' => $request->kehadiran,
+//             ]
+//         );
+
+//         return back()->with('success', 'Laporan harian berhasil disimpan.');
+//     }
+//     public function storeLaporanMingguan(Request $request)
+//     {
+//         $request->validate([
+//             'minggu_ke' => 'required|integer',
+//             'isi_laporan' => 'required|string',
+//             'kehadiran' => 'required|string',
+//         ]);
+
+//         $user = Auth::user();
+
+//         $semesterStart = env('SEMESTER_START');
+//         $semesterEnd = env('SEMESTER_END');
+
+//         $user->load(['peserta.registrationPlacement.lowongan']);
+
+//         // Menggunakan updateOrCreate untuk memperbarui data yang ada atau membuat baru jika tidak ada
+//         $laporanMingguan = LaporanMingguan::updateOrCreate(
+//             [
+//                 'peserta_id' => $user->peserta->id,
+//                 'mitra_id' => $user->peserta->registrationPlacement->lowongan->mitra_id,
+//                 'minggu_ke' => $request->minggu_ke,
+//             ],
+//             [
+//                 'isi_laporan' => $request->isi_laporan,
+//                 'status' => 'pending',
+//                 'kehadiran' => $request->kehadiran,
+//             ]
+//         );
+
+//         return back()->with('success', 'Laporan mingguan berhasil disimpan.');
+//     }
+//     public function storeLaporanLengkap(Request $request)
+//     {
+//         $request->validate([
+//             'tanggal' => 'required|date',
+//             'isi_laporan' => 'required|string',
+//         ]);
+
+//         $user = Auth::user();
+//         $aktivitas = AktivitasMbkm::where('peserta_id', $user->id)->first();
+
+//         // Menggunakan updateOrCreate untuk memperbarui data yang ada atau membuat baru jika tidak ada
+//         $laporanLengkap = LaporanLengkap::updateOrCreate(
+//             [
+//                 'peserta_id' => $aktivitas->peserta_id,
+//                 'mitra_id' => $aktivitas->mitra_id,
+//                 'tanggal' => $request->tanggal,
+//             ],
+//             [
+//                 'isi_laporan' => $request->isi_laporan,
+//                 'status' => 'pending',
+//             ]
+//         );
+
+//         $aktivitas->laporan_lengkap_id = $laporanLengkap->id;
+//         $aktivitas->save();
+
+//         return back()->with('success', 'Laporan lengkap berhasil disimpan.');
+//     }
+//     public function validateLaporanHarian(Request $request, $id)
+//     {
+//         $laporanHarian = LaporanHarian::findOrFail($id);
+
+//         if ($laporanHarian->mitra->user_id != Auth::id()) {
+//             return back()->withErrors('Anda tidak memiliki izin untuk memvalidasi laporan ini.');
+//         }
+
+//         if ($request->action == 'validasi') {
+//             $laporanHarian->update(['status' => 'validasi']);
+//             return back()->with('success', 'Laporan harian berhasil divalidasi.');
+//         } elseif ($request->action == 'revisi') {
+//             $laporanHarian->update(['status' => 'revisi']);
+//             return back()->with('success', 'Laporan harian berhasil direvisi.');
+//         }
+
+//         return back()->with('success', 'Laporan harian berhasil divalidasi.');
+//     }
+//     public function validateLaporanMingguan(Request $request, $id)
+//     {
+//         $laporanMingguan = LaporanMingguan::findOrFail($id);
+
+//         if ($laporanMingguan->mitra->user_id != Auth::id()) {
+//             return back()->withErrors('Anda tidak memiliki izin untuk memvalidasi laporan ini.');
+//         }
+
+//         if ($request->action == 'validasi') {
+//             $laporanMingguan->update(['status' => 'validasi']);
+//             return back()->with('success', 'Laporan mingguan berhasil divalidasi.');
+//         } elseif ($request->action == 'revisi') {
+//             $laporanMingguan->update(['status' => 'revisi']);
+//             return back()->with('success', 'Laporan mingguan berhasil direvisi.');
+//         }
+
+//         return back()->with('success', 'Laporan mingguan berhasil divalidasi.');
+//     }
+//     public function validateLaporanLengkap(Request $request, $id)
+//     {
+//         $laporanLengkap = LaporanLengkap::findOrFail($id);
+//         $aktivitas = AktivitasMbkm::where('laporan_lengkap_id', $id)->firstOrFail();
+
+//         if ($aktivitas->dospem->user_id != Auth::id()) {
+//             return back()->withErrors('Anda tidak memiliki izin untuk memvalidasi laporan ini.');
+//         }
+
+//         $laporanLengkap->update(['status' => 'validated']);
+
+//         return back()->with('success', 'Laporan lengkap berhasil divalidasi.');
+//     }
+// }
+
+
+
+
+di controller selanjutnya adla controller registrasi yang menangani registrasi peserta yang juga menjadi concern pada konteks masalah ini selain controller aktivitas
+
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Http\Controllers\Controller;
+use App\Models\AktivitasMbkm;
+use App\Models\DosenPembimbingLapangan;
+use App\Models\Lowongan;
+use App\Models\Peserta;
+use App\Models\Registrasi;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+
+class RegistrasiController extends Controller
+{
+    public function showPesertaRegistrasiForm()
+    {
+        $lowongans = Lowongan::all();
+        return view('applications.mbkm.staff.registrasi-program.peserta.registrasi', compact('lowongans'));
+    }
+
+    public function index()
+    {
+        $registrations = Registrasi::with('dospem')->get();
+        $pesertas = Peserta::all();
+        $dospems = DosenPembimbingLapangan::all();
+
+        return view('applications.mbkm.staff.registrasi-program.staff.index', compact('registrations', 'dospems', 'pesertas'));
+    }
+
+    public function store(Request $request)
+    {
+        $request->validate([
+            'peserta_id' => 'required|exists:peserta,id',
+            'lowongan_id' => 'required|exists:lowongans,id',
+        ]);
+
+        $pesertaId = $request->input('peserta_id');
+        $lowonganId = $request->input('lowongan_id');
+
+        $existingRegistration = Registrasi::where('peserta_id', $pesertaId)
+            ->where('lowongan_id', $lowonganId)
+            ->first();
+
+        if ($existingRegistration) {
+            return back()->withErrors(['error' => 'Peserta sudah mendaftar pada lowongan ini. Tidak dapat mendaftar lagi.']);
+        }
+
+        $peserta = Peserta::find($pesertaId);
+        $lowongan = Lowongan::find($lowonganId);
+
+        $existingAcceptedRegistration = Registrasi::where('peserta_id', $pesertaId)
+            ->whereIn('status', ['accepted', 'accepted_offer'])
+            ->first();
+
+        if ($existingAcceptedRegistration) {
+            return back()->withErrors(['Error' => 'Peserta sudah memiliki tawaran yang diterima. Tidak dapat mendaftar di lowongan lain.']);
+        }
+
+        Registrasi::create([
+            'peserta_id' => $pesertaId,
+            'lowongan_id' => $lowonganId,
+            'status' => 'registered',
+            'nama_peserta' => $peserta->nama,
+            'nama_lowongan' => $lowongan->name,
+        ]);
+
+        return back()->with('success', 'Pendaftaran berhasil.');
+    }
+
+    public function update(Request $request, $id)
+    {
+        $request->validate([
+            'status' => 'required|in:registered,processed,accepted,rejected,rejected_by_user,accepted_offer,placement',
+            'dospem_id' => 'nullable|exists:dosen_pembimbing_lapangan,id',
+        ]);
+
+        $registration = Registrasi::find($id);
+        $registration->status = $request->input('status');
+
+        if ($request->input('status') == 'accepted_offer' && $request->has('dospem_id')) {
+            $registration->dospem_id = $request->input('dospem_id');
+        }
+
+        if ($request->input('status') == 'placement') {
+            if ($registration->dospem_id === null) {
+                return back()->withErrors('Dosen pembimbing harus diisi sebelum mengubah status ke "placement".');
+            } else {
+                // Buat entri baru di tabel AktivitasMbkm
+                AktivitasMbkm::create([
+                    'peserta_id' => $registration->peserta_id,
+                    'lowongan_id' => $registration->lowongan_id,
+                    'mitra_id' => $registration->lowongan->mitra_id,
+                    'dospem_id' => $registration->dospem_id,
+                    'laporan_harian_id' => null, // Isi dengan ID laporan harian jika ada
+                    'laporan_mingguan_id' => null, // Isi dengan ID laporan mingguan jika ada
+                    'laporan_lengkap_id' => null, // Isi dengan ID laporan lengkap jika ada
+                    // Anda bisa menambahkan kolom lain yang diperlukan di sini
+                ]);
+            }
+        }
+
+        $registration->save();
+
+        return back()->with('success', 'Status registrasi berhasil diupdate.');
+    }
+
+    public function updateDospem(Request $request, $id)
+    {
+        $request->validate([
+            'dospem_id' => 'required|exists:dosen_pembimbing_lapangan,id',
+        ]);
+
+        $registration = Registrasi::find($id);
+
+        if ($registration->status != 'accepted_offer') {
+            return back()->withErrors('Status registrasi harus "accepted_offer" untuk memperbarui dosen pembimbing.');
+        }
+
+        $registration->dospem_id = $request->input('dospem_id');
+        $registration->save();
+
+        return back()->with('success', 'Dosen pembimbing berhasil diperbarui.');
+    }
+
+    public function acceptOffer(Request $request, $id)
+    {
+        $request->validate([
+            // Tidak ada validasi dospem_id di sini
+        ]);
+
+        $registration = Registrasi::find($id);
+
+        if ($registration->status != 'accepted') {
+            return back()->withErrors('Tawaran hanya dapat diambil jika diterima.');
+        }
+
+        $registration->status = 'accepted_offer';
+        $registration->save();
+
+        // Perbarui hanya registrasi yang belum ditolak oleh perusahaan atau pengguna
+        Registrasi::where('peserta_id', $registration->peserta_id)
+            ->where('id', '!=', $registration->id)
+            ->whereNotIn('status', ['rejected', 'rejected_by_user'])
+            ->update(['status' => 'rejected_by_user']);
+
+        return back()->with('success', 'Tawaran berhasil diambil.');
+    }
+
+    public function rejectOffer(Request $request, $id)
+    {
+        $request->validate([
+            // Tidak ada validasi dospem_id di sini
+        ]);
+
+        $registration = Registrasi::find($id);
+
+        if ($registration->status != 'accepted') {
+            return back()->withErrors('Tawaran hanya dapat ditolak jika diterima.');
+        }
+
+        $registration->status = 'rejected_by_user';
+        $registration->save();
+
+        return back()->with('success', 'Tawaran berhasil ditolak.');
+    }
+
+    public function showRegistrationsAndAcceptOffer($id)
+    {
+        $registration = Registrasi::with('lowongan', 'dospem')->find($id);
+
+        $user = Auth::user(); // Pastikan user login merupakan peserta
+
+        // load peserta
+        $user->load('peserta');
+
+        $registrations = Registrasi::with(['lowongan'])->where('peserta_id', $user->peserta->id)->get();
+
+        return view('applications.mbkm.staff.registrasi-program.peserta.list', compact('registration', 'registrations'));
+    }
+}
+
+
+jadi apakah kau punya solusi? anggaplah kau seorang ahli struktur data dan juga seorang programmer laravel 11 yang handal untuk menangani masalah ini dan memberikan saya solusi hingga kode untuk merealisasikannya, berikan juga saya solusi terbaik dan penjelasannya
+
+//////////////////////////////////////////////////////////
+
+Baik, berikut adalah flow yang lebih aman dan efisien di mana ketua tim melakukan registrasi awal dan hanya setelah statusnya mencapai placement, anggota tim ditambahkan dan mereka kemudian dapat mengisi laporan harian mereka sendiri.
+
+Flow Detail dari Awal hingga Akhir
+1. Registrasi Tim oleh Ketua Tim
+Ketua tim membuka form registrasi tim.
+Ketua tim mengisi detail anggota tim dan lowongan yang dipilih.
+Data tim disimpan dalam tabel teams.
+Sistem membuat entri registrasi untuk ketua tim dalam tabel registrations dengan status awal registered.
+2. Proses Seleksi oleh Admin/Staff
+Admin atau staff memverifikasi registrasi ketua tim.
+Admin atau staff memperbarui status registrasi ketua tim menjadi processed.
+Admin atau staff melakukan seleksi dan memperbarui status registrasi ketua tim menjadi accepted atau rejected.
+Jika diterima (accepted), admin atau staff memberikan tawaran kepada ketua tim untuk memilih dosen pembimbing.
+3. Penerimaan Tawaran oleh Ketua Tim
+Ketua tim menerima tawaran dan memilih dosen pembimbing (status berubah menjadi accepted_offer).
+Admin atau staff memperbarui status registrasi menjadi placement setelah ketua tim ditugaskan.
+4. Penambahan Anggota Tim
+Setelah status registrasi ketua tim berubah menjadi placement, ketua tim menambahkan anggota tim melalui form khusus.
+Sistem membuat entri registrasi untuk setiap anggota tim dalam tabel registrations dengan status placement.
+5. Pelaksanaan Program dan Pelaporan
+Setiap anggota tim melakukan aktivitas program sesuai dengan job desk masing-masing.
+Setiap anggota tim mengisi laporan harian mereka sendiri melalui sistem.
+Laporan harian dikumpulkan dan diverifikasi oleh admin atau dosen pembimbing.
+6. Validasi dan Penyelesaian
+Admin atau dosen pembimbing memvalidasi laporan harian.
+Setelah semua laporan divalidasi dan program selesai, program dianggap selesai.
