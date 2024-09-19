@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Helpers\MediaLibrary;
 use App\Http\Requests\ProfileUpdateRequest;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -11,40 +12,48 @@ use Illuminate\View\View;
 
 class ProfileController extends Controller
 {
-    /**
-     * Display the user's profile form.
-     */
     public function edit(Request $request): View
-    // {
-    //     return view('profile.edit', [
-    //         'user' => $request->user(),
-    //     ]);
-    // }
     {
+        $user = Auth::user();
+        $profileImage = $user->getMedia('profile-images')->first();
+
         return view('admin.profile.index', [
-            'user' => $request->user(),
+            'user' => $user,
+            'profileImage' => $profileImage,
         ]);
     }
 
-    /**
-     * Update the user's profile information.
-     */
     public function update(ProfileUpdateRequest $request): RedirectResponse
     {
-        $request->user()->fill($request->validated());
+        $request->validate([
+            'images' => 'array|max:3',
+        ]);
 
-        if ($request->user()->isDirty('email')) {
-            $request->user()->email_verified_at = null;
+        // Ambil user yang sedang login
+        $user = $request->user();
+
+        // Update informasi user dari request
+        $user->fill($request->validated());
+
+        // Gunakan helper untuk memindahkan gambar dari `temp` ke `profile-images`
+        $media = MediaLibrary::put(
+            $user,
+            'profile-images', // Koleksi gambar untuk profile images
+            $request,
+            'profile-images' // Disk yang digunakan sesuai dengan konfigurasi di filesystems.php
+        );
+
+        // Jika email berubah, atur kembali verifikasi email
+        if ($user->isDirty('email')) {
+            $user->email_verified_at = null;
         }
 
-        $request->user()->save();
+        // Simpan user setelah update
+        $user->save();
 
         return Redirect::route('profile.edit')->with('status', 'profile-updated');
     }
 
-    /**
-     * Delete the user's account.
-     */
     public function destroy(Request $request): RedirectResponse
     {
         $request->validateWithBag('userDeletion', [
