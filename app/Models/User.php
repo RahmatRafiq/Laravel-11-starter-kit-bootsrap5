@@ -8,11 +8,13 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
 use Spatie\Permission\Traits\HasRoles;
+use Spatie\MediaLibrary\HasMedia;
+use Spatie\MediaLibrary\InteractsWithMedia;
 
-class User extends Authenticatable
+class User extends Authenticatable implements HasMedia
+
 {
-    use HasFactory, Notifiable, HasRoles, HasApiTokens;
-
+    use HasFactory, Notifiable, HasRoles, HasApiTokens, InteractsWithMedia;
     /**
      * The attributes that are mass assignable.
      *
@@ -52,11 +54,5 @@ class User extends Authenticatable
             'created_at' => 'datetime:Y-m-d h:i:s',
             'updated_at' => 'datetime:Y-m-d h:i:s',
         ];
-    }
-
-    // hasOne peserta
-    public function peserta()
-    {
-        return $this->hasOne(Peserta::class, 'user_id', 'id');
     }
 }
