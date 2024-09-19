@@ -22,6 +22,9 @@ Route::middleware('auth')->group(function () {
 
     Route::resource('admin/role-permissions/user', UserController::class);
     Route::post('admin/role-permissions/user/json', [UserController::class, 'json'])->name('user.json');
+    Route::post('/temp/storage', [\App\Http\Controllers\StorageController::class, 'store'])->name('storage.store');
+    Route::delete('/temp/storage', [\App\Http\Controllers\StorageController::class, 'destroy'])->name('storage.destroy');
+    Route::get('/temp/storage/{path}', [\App\Http\Controllers\StorageController::class, 'show'])->name('storage.show');
 
 });
 
