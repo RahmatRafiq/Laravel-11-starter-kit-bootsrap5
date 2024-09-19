@@ -8,7 +8,7 @@ use Illuminate\Http\Request;
 
 class MediaLibrary
 {
-    public static function put(Collection|Model $model, string $collectionName = 'default', Request $request)
+    public static function put(Collection | Model $model, string $collectionName = 'default', Request $request, string $disk = 'media')
     {
         // retrieve saved images
         $files = $model->getMedia($collectionName);
@@ -31,7 +31,7 @@ class MediaLibrary
             // add images from temp
             foreach ($request->input($collectionName) as $fileName) {
                 if (!$files->contains('file_name', $fileName)) {
-                    $model->addMediaFromDisk($fileName, 'temp')->toMediaCollection('images');
+                    $model->addMediaFromDisk($fileName, 'temp')->toMediaCollection($collectionName, $disk);
                     $addedFiles[] = $fileName;
                 }
             }
@@ -40,7 +40,7 @@ class MediaLibrary
         // file that not affected from removed and added
         $files = $files->filter(function ($file) use ($filesToRemove, $addedFiles) {
             return !in_array($file->file_name, $filesToRemove->pluck('file_name')->toArray())
-                && !in_array($file->file_name, $addedFiles);
+            && !in_array($file->file_name, $addedFiles);
         });
 
         return [
@@ -54,7 +54,7 @@ class MediaLibrary
         ];
     }
 
-    public static function destroy(Collection|Model $model, string $collectionName = 'default')
+    public static function destroy(Collection | Model $model, string $collectionName = 'default')
     {
         try {
             // delete file from media
