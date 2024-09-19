@@ -1,6 +1,6 @@
 /* existing roles now are super admin, dosen, mitra, peserta and staff */
 /* create background color */
-.bg-super_admin {
+.bg-admin {
     background-color: #f44336;
 }
 .bg-user {

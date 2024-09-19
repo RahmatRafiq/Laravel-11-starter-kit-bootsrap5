@@ -1,43 +1,49 @@
 @extends('layouts.app')
 
 @section('content')
-    <div class="card mb-3">
-        <div class="card-body">
-            <div class="card-header d-flex justify-content-between align-items-center">
-                <h5 class="card-title">User Data</h5>
-                <div class="mb-3">
-                    <a href="{{ route('user.create') }}" class="btn btn-success">Create New User</a>
-                </div>
-            </div>
-            <div class="table-responsive">
-                <table class="table styled-table" id="users">
-                    <thead>
-                        <tr>
-                            <th>ID</th>
-                            <th>Name</th>
-                            <th>Role</th>
-                            <th>Email</th>
-                            <th>Created At</th>
-                            <th>Updated At</th>
-                            <th>Action</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                    </tbody>
-                </table>
+<div class="card mb-3">
+    <div class="alert alert-info" role="alert">
+        <h4 class="alert-heading">Customize Role Badges</h4>
+        <p>You can change the color of the role badges by editing the <code>assets/css/badges.css</code> file.</p>
+        <hr>
+        <p class="mb-0">Make sure to refresh the page after making changes to see the updated badge colors.</p>
+    </div>
+    <div class="card-body">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="card-title">User Data</h5>
+            <div class="mb-3">
+                <a href="{{ route('user.create') }}" class="btn btn-success">Create New User</a>
             </div>
         </div>
+        <div class="table-responsive">
+            <table class="table styled-table" id="users">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Name</th>
+                        <th>Role</th>
+                        <th>Email</th>
+                        <th>Created At</th>
+                        <th>Updated At</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                </tbody>
+            </table>
+        </div>
     </div>
+</div>
 @endsection
 @push('css')
-    <link rel="stylesheet" href="{{ asset('assets/DataTables/datatables.min.css') }}">
-    <link rel="stylesheet" href="{{ asset('assets/css/badges.css') }}">
+<link rel="stylesheet" href="{{ asset('assets/DataTables/datatables.min.css') }}">
+<link rel="stylesheet" href="{{ asset('assets/css/badges.css') }}">
 @endpush
 @push('javascript')
-    <script src="{{ asset('assets/DataTables/datatables.min.js') }}"></script>
-    <script src="{{ asset('assets/js/sweetalert2.all.min.js') }}"></script>
-    <script>
-            $('#users').DataTable(
+<script src="{{ asset('assets/DataTables/datatables.min.js') }}"></script>
+<script src="{{ asset('assets/js/sweetalert2.all.min.js') }}"></script>
+<script>
+    $('#users').DataTable(
                 {
                     responsive: true,
                     serverSide: true,
@@ -152,5 +158,5 @@
                 }
             });
         }
-    </script>
+</script>
 @endpush
