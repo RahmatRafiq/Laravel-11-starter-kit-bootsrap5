@@ -13,6 +13,7 @@ Route::middleware('auth')->group(function () {
     Route::get('admin/profile', [\App\Http\Controllers\ProfileController::class, 'edit'])->name('profile.edit');
     Route::patch('admin/profile', [\App\Http\Controllers\ProfileController::class, 'update'])->name('profile.update');
     Route::delete('admin/profile', [\App\Http\Controllers\ProfileController::class, 'destroy'])->name('profile.destroy');
+    Route::post('profile/upload',  [\App\Http\Controllers\ProfileController::class, 'upload'])->name('profile.upload');
 
     Route::resource('admin/role-permissions/permission', \App\Http\Controllers\RolePermission\PermissionController::class);
     Route::post('admin/role-permissions/permission/json', [\App\Http\Controllers\RolePermission\PermissionController::class, 'json'])->name('permission.json');
@@ -22,9 +23,6 @@ Route::middleware('auth')->group(function () {
 
     Route::resource('admin/role-permissions/user', UserController::class);
     Route::post('admin/role-permissions/user/json', [UserController::class, 'json'])->name('user.json');
-    Route::post('/temp/storage', [\App\Http\Controllers\StorageController::class, 'store'])->name('storage.store');
-    Route::delete('/temp/storage', [\App\Http\Controllers\StorageController::class, 'destroy'])->name('storage.destroy');
-    Route::get('/temp/storage/{path}', [\App\Http\Controllers\StorageController::class, 'show'])->name('storage.show');
 
 });
 

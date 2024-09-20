@@ -181,7 +181,7 @@
     const element = '#myDropzone';
     const key = 'images';
     const files = [];
-    const urlStore = "{!! route('storage.store') !!}";
+    const urlStore = "{!! route('profile.upload') !!}"; // URL langsung ke ProfileController
     const urlDestroy = "{!! route('storage.destroy') !!}";
     const csrf = "{!! csrf_token() !!}";
     const acceptedFiles = 'image/*';
@@ -200,7 +200,8 @@
         });
     @endif
 
-        Dropzoner(
+    // Initialize Dropzoner
+    const dz = Dropzoner(
         element,
         key,
         {
@@ -214,5 +215,13 @@
         }
     );
 
+    // Add uploaded file paths to the form as hidden inputs
+    dz.on("success", function(file, response) {
+        const input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = 'images[]';
+        input.value = response.path;  // Response from server should return the stored file path
+        document.querySelector('form').appendChild(input);
+    });
 </script>
 @endpush
