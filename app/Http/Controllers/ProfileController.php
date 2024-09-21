@@ -36,7 +36,11 @@ class ProfileController extends Controller
 
         // Generate path unik untuk setiap user
         $name = Str::orderedUuid() . '_' . $request->file('file')->getClientOriginalName();
-        $path = $request->file('file')->storeAs('profile-images/' . $user->id . '/media', $name, 'profile-images');
+        $path = $request->file('file')->storeAs(
+             $user->id ,
+            $name,
+            'profile-images'
+        );
 
         return response()->json([
             'path' => $path,
