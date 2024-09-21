@@ -9,7 +9,6 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Redirect;
 use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Str;
 use Illuminate\View\View;
 
 class ProfileController extends Controller
@@ -29,23 +28,11 @@ class ProfileController extends Controller
     public function upload(Request $request)
     {
         $request->validate([
-            'file' => 'required|file|max:2048',
+            'profile-picture' => 'required|file|max:2048',
         ]);
-
         $user = Auth::user();
 
-        // Generate path unik untuk setiap user
-        $name = Str::orderedUuid() . '_' . $request->file('file')->getClientOriginalName();
-        $path = $request->file('file')->storeAs(
-             $user->id ,
-            $name,
-            'profile-images'
-        );
-
-        return response()->json([
-            'path' => $path,
-            'url' => Storage::disk('profile-images')->url($path),
-        ]);
+        return response()->json(['message' => 'Profile picture uploaded'],  200);
     }
 
     // Menghapus media profil
