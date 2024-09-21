@@ -14,7 +14,6 @@ use Illuminate\View\View;
 
 class ProfileController extends Controller
 {
-    // Menampilkan form edit profile
     public function edit(Request $request): View
     {
         $user = Auth::user();
@@ -26,72 +25,53 @@ class ProfileController extends Controller
         ]);
     }
 
-    // Menghandle file upload menggunakan Dropzone
+    // Menghandle file upload
     public function upload(Request $request)
     {
         $request->validate([
-            'file' => 'required|file|max:2048', // Validasi ukuran file maksimal
+            'file' => 'required|file|max:2048',
         ]);
 
-        // Rename file dengan UUID untuk menghindari konflik nama file
+        $user = Auth::user();
+
+        // Generate path unik untuk setiap user
         $name = Str::orderedUuid() . '_' . $request->file('file')->getClientOriginalName();
+        $path = $request->file('file')->storeAs('profile-images/' . $user->id . '/media', $name, 'profile-images');
 
-        // Simpan file langsung ke disk `profile-images`
-        $path = $request->file('file')->storeAs('', $name, 'profile-images');
-
-        // Kembalikan path file dan URL-nya ke Dropzone
         return response()->json([
-            'path' => $path, // Path yang akan disimpan di hidden input
-            'url' => Storage::disk('profile-images')->url($path), // URL untuk menampilkan gambar
+            'path' => $path,
+            'url' => Storage::disk('profile-images')->url($path),
         ]);
     }
 
-    // Update profile user
+    // Menghapus media profil
+    public function deleteFile(Request $request)
+    {
+        $request->validate(['filename' => 'required|string']);
+
+        // Hapus file dari disk dan database Spatie Media
+        Storage::disk('profile-images')->delete($request->filename);
+        \Spatie\MediaLibrary\MediaCollections\Models\Media::where('file_name', $request->filename)->first()->delete();
+
+        return response()->json(['message' => 'File berhasil dihapus'], 200);
+    }
+
     public function update(ProfileUpdateRequest $request): RedirectResponse
     {
-        $request->validate([
-            'images' => 'array|max:3', // Validasi input images array
-        ]);
-
-        // Ambil user yang sedang login
+        $request->validate(['images' => 'array|max:3']);
         $user = $request->user();
-
-        // Update informasi user dari request
         $user->fill($request->validated());
 
-        // Gunakan MediaLibrary untuk mengaitkan gambar yang di-upload ke media collection user
         foreach ($request->input('images') as $filePath) {
-            // Menambahkan gambar dari disk `profile-images` ke media collection `profile-images`
             $user->addMediaFromDisk($filePath, 'profile-images')->toMediaCollection('profile-images');
         }
 
-        // Jika email berubah, reset email verification
         if ($user->isDirty('email')) {
             $user->email_verified_at = null;
         }
 
-        // Simpan perubahan pada user
         $user->save();
 
         return Redirect::route('profile.edit')->with('status', 'profile-updated');
-    }
-
-    // Menghandle penghapusan user (optional method)
-    public function destroy(Request $request): RedirectResponse
-    {
-        $request->validateWithBag('userDeletion', [
-            'password' => ['required', 'current_password'],
-        ]);
-
-        $user = $request->user();
-
-        Auth::logout();
-
-        $user->delete();
-
-        $request->session()->invalidate();
-        $request->session()->regenerateToken();
-
-        return Redirect::to('/');
     }
 }
