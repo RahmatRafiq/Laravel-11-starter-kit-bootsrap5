@@ -1,9 +1,9 @@
 <?php
-
 namespace App\Http\Controllers;
 
 use App\Helpers\MediaLibrary;
 use App\Http\Requests\ProfileUpdateRequest;
+use DB;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -24,45 +24,61 @@ class ProfileController extends Controller
         ]);
     }
 
-    // Menghandle file upload
     public function upload(Request $request)
     {
         $request->validate([
-            'profile-picture' => 'required|file|max:2048',
+            'profile-images.*' => 'required|file|max:2048|mimes:jpeg,jpg,png',
+            'id' => 'required|integer',
         ]);
-        $user = Auth::user();
 
-        return response()->json(['message' => 'Profile picture uploaded'],  200);
-    }
+        $user = $request->user();
 
-    // Menghapus media profil
-    public function deleteFile(Request $request)
-    {
-        $request->validate(['filename' => 'required|string']);
-
-        // Hapus file dari disk dan database Spatie Media
-        Storage::disk('profile-images')->delete($request->filename);
-        \Spatie\MediaLibrary\MediaCollections\Models\Media::where('file_name', $request->filename)->first()->delete();
-
-        return response()->json(['message' => 'File berhasil dihapus'], 200);
+        return response()->json(['message' => 'Profile picture uploaded'], 200);
     }
 
     public function update(ProfileUpdateRequest $request): RedirectResponse
     {
-        $request->validate(['images' => 'array|max:3']);
-        $user = $request->user();
-        $user->fill($request->validated());
+        DB::beginTransaction();
 
-        foreach ($request->input('images') as $filePath) {
-            $user->addMediaFromDisk($filePath, 'profile-images')->toMediaCollection('profile-images');
+        try {
+            $request->validate([
+                'profile-images' => 'array|max:3',
+            ]);
+
+            $user = $request->user();
+            $user->fill($request->validated());
+
+            if ($user->isDirty('email')) {
+                $user->email_verified_at = null;
+            }
+
+            if ($request->has('profile-images')) {
+                MediaLibrary::put(
+                    $user,
+                    'profile-images',
+                    $request,
+                    'profile-images'
+                );
+            }
+
+            $user->save();
+            DB::commit();
+
+            return Redirect::route('profile.edit')->with('status', 'Profile updated successfully.');
+        } catch (\Exception $e) {
+            DB::rollBack();
+
+            return Redirect::route('profile.edit')->with('error', 'Failed to update profile.');
         }
+    }
 
-        if ($user->isDirty('email')) {
-            $user->email_verified_at = null;
-        }
+    public function deleteFile(Request $request)
+    {
+        $request->validate(['filename' => 'required|string']);
 
-        $user->save();
+        Storage::disk('profile-images')->delete($request->filename);
+        \Spatie\MediaLibrary\MediaCollections\Models\Media::where('file_name', $request->filename)->first()->delete();
 
-        return Redirect::route('profile.edit')->with('status', 'profile-updated');
+        return response()->json(['message' => 'File berhasil dihapus'], 200);
     }
 }

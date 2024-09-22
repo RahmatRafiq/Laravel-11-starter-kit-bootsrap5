@@ -8,21 +8,13 @@
                 <h5 class="card-title">Profile</h5>
             </div>
             <div class="card-body">
-                @if ($profileImage)
-                <div class="row gx-3 mb-4 text-center">
-                    <div class="col-lg-12 col-sm-12 col-12">
-                        <img src="{{ $profileImage->getUrl() }}" alt="Profile Image" class="img-fluid rounded-circle"
-                            style="max-width: 150px;">
-                    </div>
-                </div>
-                @endif
-
                 <div class="row gx-3 mb-4">
                     <div class="col-lg-12 col-sm-12 col-12">
                         <form method="POST" action="{{ route('profile.update') }}" enctype="multipart/form-data">
                             @csrf
                             @method('PATCH')
 
+                            <!-- Form Input Name -->
                             <div class="form-group row mb-3">
                                 <label for="name" class="col-md-4 col-form-label text-md-right">{{ __('Name') }}</label>
                                 <div class="col-md-8">
@@ -37,6 +29,7 @@
                                 </div>
                             </div>
 
+                            <!-- Form Input Email -->
                             <div class="form-group row mb-3">
                                 <label for="email" class="col-md-4 col-form-label text-md-right">{{ __('E-Mail Address')
                                     }}</label>
@@ -52,13 +45,15 @@
                                 </div>
                             </div>
 
-                            <div class="col-md-12">
-                                <div class="mb-3">
-                                    <label for="images" class="form-label">Profile Images</label>
+                            <!-- Dropzone for Profile Images -->
+                            <div class="form-group row mb-3">
+                                <label for="images" class="col-md-4 col-form-label text-md-right">Profile Images</label>
+                                <div class="col-md-8">
                                     <div class="dropzone" id="myDropzone"></div>
                                 </div>
                             </div>
 
+                            <!-- Submit Button -->
                             <div class="form-group row mb-3">
                                 <div class="col-md-8 offset-md-4">
                                     <button type="submit" class="btn btn-primary">
@@ -85,12 +80,13 @@
     const element = '#myDropzone';
     const key = 'images';
     const files = [];
-    const urlStore = "{!! route('profile.upload') !!}";
+    const urlStore = "{!! route('storage.store') !!}";
     const urlDestroy = "{!! route('profile.deleteFile') !!}";
     const csrf = "{!! csrf_token() !!}";
     const acceptedFiles = 'image/*';
     const maxFiles = 3;
 
+    // Tambahkan file yang sudah ada jika ada
     @if($profileImage)
         files.push({
             id: '{{ $profileImage->id }}',
@@ -102,6 +98,7 @@
             original_url: '{{ $profileImage->getFullUrl() }}',
         });
     @endif
+
     const dz = Dropzoner(
         element,
         key,
@@ -124,4 +121,5 @@
         document.querySelector('form').appendChild(input);
     });
 </script>
+
 @endpush
