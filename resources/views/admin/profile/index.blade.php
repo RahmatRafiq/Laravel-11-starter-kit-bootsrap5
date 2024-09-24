@@ -167,7 +167,7 @@
 @push('javascript')
 <script type="module">
     const element = '#myDropzone';
-    const key = 'images';
+    const key = 'profile-images'; // Menggunakan 'profile-images' di sini
     const files = [];
     const urlStore = "{!! route('storage.store') !!}";
     const urlDestroy = "{!! route('profile.deleteFile') !!}";
